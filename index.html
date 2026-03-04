@@ -39,40 +39,6 @@
             opacity: 0.9;
         }
 
-        .config-banner {
-            background: #fef3c7;
-            border: 2px solid #f59e0b;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .config-banner h3 {
-            color: #92400e;
-            margin-bottom: 1rem;
-        }
-
-        .config-banner ol {
-            margin-left: 1.5rem;
-            color: #78350f;
-        }
-
-        .config-banner li {
-            margin-bottom: 0.5rem;
-        }
-
-        .config-banner a {
-            color: #b45309;
-            font-weight: 600;
-        }
-
-        .config-banner code {
-            background: #fed7aa;
-            padding: 0.2rem 0.4rem;
-            border-radius: 3px;
-            font-size: 0.9rem;
-        }
-
         .upload-section {
             background: white;
             border-radius: 12px;
@@ -419,26 +385,11 @@
         }
 
         @media (max-width: 768px) {
-            body {
-                padding: 1rem;
-            }
-
-            .header h1 {
-                font-size: 2rem;
-            }
-
-            .metadata-form {
-                grid-template-columns: 1fr;
-            }
-
-            .storage-header {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .search-box {
-                max-width: 100%;
-            }
+            body { padding: 1rem; }
+            .header h1 { font-size: 2rem; }
+            .metadata-form { grid-template-columns: 1fr; }
+            .storage-header { flex-direction: column; align-items: stretch; }
+            .search-box { max-width: 100%; }
         }
     </style>
 </head>
@@ -449,29 +400,11 @@
             <p>Upload, store, and manage your insurance verification forms</p>
         </div>
 
-        <!-- Configuration Banner -->
-        <div class="config-banner">
-            <h3>🔧 Quick Setup Required (One-time, 2 minutes)</h3>
-            <ol>
-                <li>Go to your GitHub repository → Settings → Developer settings → Personal access tokens → Tokens (classic)</li>
-                <li>Click "Generate new token (classic)"</li>
-                <li>Give it a name (e.g., "Insurance DB"), check <code>repo</code> scope, and generate</li>
-                <li>Copy the token and paste it in the code below (line ~580: <code>const GITHUB_TOKEN = "YOUR_TOKEN_HERE"</code>)</li>
-                <li>Update <code>GITHUB_OWNER</code> and <code>GITHUB_REPO</code> with your GitHub username and repository name</li>
-            </ol>
-            <p style="margin-top: 1rem;"><strong>✅ 100% Free - No payment needed!</strong></p>
-        </div>
-
         <div class="upload-section">
             <h2 class="section-title">Upload New Verification Form</h2>
-            
-            <div class="success-message" id="successMessage">
-                ✓ Form saved successfully!
-            </div>
 
-            <div class="error-message" id="errorMessage">
-                ✗ <span id="errorText">Error occurred</span>
-            </div>
+            <div class="success-message" id="successMessage">✓ Form saved successfully!</div>
+            <div class="error-message" id="errorMessage">✗ <span id="errorText">Error occurred</span></div>
 
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📄</div>
@@ -519,84 +452,37 @@
     </div>
 
     <script>
-        // ============================================
-        // GITHUB CONFIGURATION - UPDATE THESE VALUES
-        // ============================================
-        const GITHUB_TOKEN = "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";  // Your personal access token
-        const GITHUB_OWNER = "btyservices";     // Your GitHub username
-        const GITHUB_REPO = "Insurance-Verification";            // Your repository name
-        const BRANCH = "main";                            // Branch name (usually "main" or "master")
+        // All GitHub API calls go through our secure Vercel function
+        const API_URL = '/api/github';
 
-        // Check if configured
-        const isConfigured = GITHUB_TOKEN !== "YOUR_GITHUB_TOKEN_HERE";
-
-        // Storage management
         let uploadedFile = null;
         let allForms = [];
         let currentSearchTerm = '';
 
-        // GitHub API helper functions
-        async function githubRequest(endpoint, method = 'GET', body = null) {
-            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${endpoint}`;
-            const options = {
-                method,
-                headers: {
-                    'Authorization': `token ${GITHUB_TOKEN}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json',
-                }
-            };
-
-            if (body) {
-                options.body = JSON.stringify(body);
-            }
-
-            const response = await fetch(url, options);
-            if (!response.ok) {
-                throw new Error(`GitHub API error: ${response.statusText}`);
-            }
-            return response.json();
+        async function loadFormsFromAPI() {
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+            const data = await response.json();
+            if (!data.content) return [];
+            const content = atob(data.content);
+            return JSON.parse(content);
         }
 
-        async function loadFormsFromGitHub() {
-            try {
-                // Try to load the database file
-                const data = await githubRequest('insurance-forms-db.json');
-                const content = atob(data.content);
-                return JSON.parse(content);
-            } catch (error) {
-                // If file doesn't exist, return empty array
-                if (error.message.includes('404')) {
-                    return [];
-                }
-                throw error;
-            }
-        }
+        async function saveFormsToAPI(forms) {
+            // Get current SHA first
+            const getResponse = await fetch(API_URL);
+            if (!getResponse.ok) throw new Error(`API error: ${getResponse.statusText}`);
+            const existing = await getResponse.json();
 
-        async function saveFormsToGitHub(forms) {
-            try {
-                let sha = null;
-                
-                // Try to get existing file SHA
-                try {
-                    const existing = await githubRequest('insurance-forms-db.json');
-                    sha = existing.sha;
-                } catch (error) {
-                    // File doesn't exist yet, that's okay
-                }
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(forms, null, 2))));
 
-                const content = btoa(JSON.stringify(forms, null, 2));
-                
-                await githubRequest('insurance-forms-db.json', 'PUT', {
-                    message: 'Update insurance forms database',
-                    content: content,
-                    branch: BRANCH,
-                    sha: sha
-                });
-            } catch (error) {
-                console.error('Error saving to GitHub:', error);
-                throw error;
-            }
+            const response = await fetch(API_URL, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, sha: existing.sha || null })
+            });
+
+            if (!response.ok) throw new Error(`API error: ${response.statusText}`);
         }
 
         // File upload handling
@@ -617,9 +503,7 @@
             uploadArea.classList.add('dragover');
         });
 
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
 
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
@@ -633,9 +517,7 @@
         });
 
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFileSelect(e.target.files[0]);
-            }
+            if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
         });
 
         function handleFileSelect(file) {
@@ -655,7 +537,6 @@
             checkFormValid();
         });
 
-        // Form validation
         const insuranceName = document.getElementById('insuranceName');
         const groupName = document.getElementById('groupName');
         const groupNumber = document.getElementById('groupNumber');
@@ -665,14 +546,14 @@
         });
 
         function checkFormValid() {
-            const isValid = uploadedFile && 
-                           insuranceName.value.trim() && 
-                           groupName.value.trim() && 
+            const isValid = uploadedFile &&
+                           insuranceName.value.trim() &&
+                           groupName.value.trim() &&
                            groupNumber.value.trim();
-            saveBtn.disabled = !isValid || !isConfigured;
+            saveBtn.disabled = !isValid;
         }
 
-        function showSuccess(message) {
+        function showSuccess() {
             successMessage.classList.add('show');
             setTimeout(() => successMessage.classList.remove('show'), 3000);
         }
@@ -683,20 +564,18 @@
             setTimeout(() => errorMessage.classList.remove('show'), 5000);
         }
 
-        // Save form
         saveBtn.addEventListener('click', async () => {
-            if (!uploadedFile || !isConfigured) return;
+            if (!uploadedFile) return;
 
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving...';
 
             try {
-                // Convert file to base64
                 const reader = new FileReader();
                 reader.onload = async function(e) {
                     try {
-                        const forms = await loadFormsFromGitHub();
-                        
+                        const forms = await loadFormsFromAPI();
+
                         const newForm = {
                             id: Date.now(),
                             fileName: uploadedFile.name,
@@ -708,11 +587,10 @@
                         };
 
                         forms.push(newForm);
-                        await saveFormsToGitHub(forms);
-                        
-                        showSuccess('Form saved successfully!');
+                        await saveFormsToAPI(forms);
 
-                        // Reset form
+                        showSuccess();
+
                         uploadedFile = null;
                         fileInput.value = '';
                         selectedFile.classList.remove('visible');
@@ -723,16 +601,14 @@
                         saveBtn.textContent = 'Save Verification Form';
                         checkFormValid();
 
-                        // Refresh display
                         await loadAndDisplayForms();
                     } catch (error) {
                         console.error('Error:', error);
-                        showError('Failed to save form. Please check your GitHub configuration.');
+                        showError('Failed to save form. Please try again.');
                         saveBtn.disabled = false;
                         saveBtn.textContent = 'Save Verification Form';
                     }
                 };
-
                 reader.readAsDataURL(uploadedFile);
             } catch (error) {
                 console.error('Error:', error);
@@ -742,46 +618,29 @@
             }
         });
 
-        // Load and display forms
         async function loadAndDisplayForms() {
             const loadingIndicator = document.getElementById('loadingIndicator');
             const formsGrid = document.getElementById('formsGrid');
 
-            if (!isConfigured) {
-                loadingIndicator.style.display = 'none';
-                formsGrid.style.display = 'grid';
-                formsGrid.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⚙️</div>
-                        <div class="empty-state-text">Please configure GitHub to use this database</div>
-                    </div>
-                `;
-                return;
-            }
-
             try {
                 loadingIndicator.style.display = 'block';
                 formsGrid.style.display = 'none';
-                
-                allForms = await loadFormsFromGitHub();
-                
+
+                allForms = await loadFormsFromAPI();
+
                 loadingIndicator.style.display = 'none';
                 formsGrid.style.display = 'grid';
                 displayForms();
             } catch (error) {
                 console.error('Error loading forms:', error);
-                loadingIndicator.innerHTML = `
-                    <div style="color: #ef4444;">Error loading forms. Please check your GitHub configuration.</div>
-                `;
+                loadingIndicator.innerHTML = `<div style="color: #ef4444;">Error loading forms. Please refresh the page.</div>`;
             }
         }
 
-        // Display forms
         function displayForms() {
             const formsGrid = document.getElementById('formsGrid');
             const formCount = document.getElementById('formCount');
 
-            // Filter forms based on search
             const filteredForms = allForms.filter(form => {
                 const search = currentSearchTerm.toLowerCase();
                 return form.insuranceName.toLowerCase().includes(search) ||
@@ -797,17 +656,14 @@
                     <div class="empty-state">
                         <div class="empty-state-icon">📁</div>
                         <div class="empty-state-text">${currentSearchTerm ? 'No forms found' : 'No forms uploaded yet'}</div>
-                    </div>
-                `;
+                    </div>`;
                 return;
             }
 
             formsGrid.innerHTML = filteredForms.map(form => {
                 const uploadDate = new Date(form.uploadDate);
                 const formattedDate = uploadDate.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
+                    year: 'numeric', month: 'short', day: 'numeric'
                 });
 
                 return `
@@ -835,58 +691,42 @@
                             </div>
                         </div>
                         <div class="form-card-actions">
-                            <button class="download-btn" onclick="downloadForm(${form.id})">
-                                ⬇️ Download PDF
-                            </button>
-                            <button class="delete-btn" onclick="deleteForm(${form.id})">
-                                🗑️
-                            </button>
+                            <button class="download-btn" onclick="downloadForm(${form.id})">⬇️ Download PDF</button>
+                            <button class="delete-btn" onclick="deleteForm(${form.id})">🗑️</button>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             }).join('');
         }
 
-        // Search functionality
-        const searchBox = document.getElementById('searchBox');
-        searchBox.addEventListener('input', (e) => {
+        document.getElementById('searchBox').addEventListener('input', (e) => {
             currentSearchTerm = e.target.value;
             displayForms();
         });
 
-        // Download form
         window.downloadForm = function(id) {
             const form = allForms.find(f => f.id === id);
             if (!form) return;
-
             const link = document.createElement('a');
             link.href = form.fileData;
             link.download = form.fileName;
             link.click();
         };
 
-        // Delete form
         window.deleteForm = async function(id) {
             if (!confirm('Are you sure you want to delete this form?')) return;
-
             try {
                 const updatedForms = allForms.filter(f => f.id !== id);
-                await saveFormsToGitHub(updatedForms);
+                await saveFormsToAPI(updatedForms);
                 await loadAndDisplayForms();
-                showSuccess('Form deleted successfully!');
+                showSuccess();
             } catch (error) {
                 console.error('Error deleting form:', error);
                 showError('Failed to delete form. Please try again.');
             }
         };
 
-        // Initial load
         loadAndDisplayForms();
-
-        // Auto-refresh every 30 seconds to sync changes
-        if (isConfigured) {
-            setInterval(loadAndDisplayForms, 30000);
-        }
+        setInterval(loadAndDisplayForms, 30000);
     </script>
 </body>
 </html>
