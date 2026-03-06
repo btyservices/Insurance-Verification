@@ -225,7 +225,9 @@
             const response = await fetch(API_URL + '?action=getpdf&filename=' + encodeURIComponent(pdfFilename));
             if (!response.ok) throw new Error('Download failed');
             const data = await response.json();
-            const binaryStr = atob(data.content);
+            // Strip newlines that GitHub adds to base64 content
+            const cleanBase64 = data.content.replace(/\n/g, '').replace(/\s/g, '');
+            const binaryStr = atob(cleanBase64);
             const bytes = new Uint8Array(binaryStr.length);
             for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
             const blob = new Blob([bytes], { type: 'application/pdf' });
