@@ -68,7 +68,9 @@ export default async function handler(req, res) {
             const { filename } = req.query;
             const data = await getFile(`pdfs/${filename}`);
             if (!data) return res.status(404).json({ error: 'File not found' });
-            return res.status(200).json({ content: data.content });
+            // Strip whitespace/newlines GitHub adds to base64
+            const cleanContent = data.content.replace(/[\s\n\r]/g, '');
+            return res.status(200).json({ content: cleanContent });
         }
 
         // PUT - save a new form
